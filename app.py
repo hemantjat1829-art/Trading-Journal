@@ -327,4 +327,4 @@ def create_app(database_url: str | None = None) -> FastAPI:
         return {"added": len(ids - have), "already_present": len(have)}
 
     return app
-    app = create_app()
+app = create_app()
