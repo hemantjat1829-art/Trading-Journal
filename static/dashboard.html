@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Journal</title>
+<style>
+:root{--bg:#0f1218;--card:#181d27;--line:#2a3140;--text:#e8ecf3;--mute:#8b95a8;--green:#1fb57a;--red:#e5484d;--accent:#4c8dff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1180px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:20px;margin:0}
+h2{font-size:14px;margin:0 0 10px;color:var(--mute);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat b{display:block;font-size:22px}
+.stat span{color:var(--mute);font-size:13px}
+input,select,button{font:inherit;color:inherit;background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+label.field{display:block;margin:12px 0 4px;color:var(--mute);font-size:13px}
+.auth{max-width:380px;margin:8vh auto 0}
+.auth input{width:100%}
+.auth input[type=checkbox]{width:auto}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.dow{text-align:center;color:var(--mute);font-size:12px}
+.cell{aspect-ratio:1;padding:0;border-radius:8px;border:1px solid var(--line);background:#11161f;color:var(--text);font-size:13px;min-width:0}
+div.cell{border-color:transparent;background:#141922;color:var(--mute)}
+.cell.flat{background:#222a38}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.msg{margin:8px 0 0;color:var(--mute);font-size:13px}
+.err{color:var(--red)}
+svg{width:100%;height:auto;display:block} #curve{min-height:250px;overflow:visible} .curve-card{position:relative} .curve-axis{fill:var(--mute);font-size:11px} .curve-grid{stroke:var(--line);stroke-width:1;opacity:.85} .curve-zero{stroke:#647084;stroke-width:1.2;stroke-dasharray:6 5} .curve-point{stroke:#181d27;stroke-width:2;cursor:crosshair}
+[hidden]{display:none!important}
+footer{color:var(--mute);font-size:12px;margin:22px 0}
+
+.analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.analytics-panel{background:#11161f;border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.analytics-panel h3{font-size:13px;color:var(--mute);margin:0 0 10px}
+.analytics-panel canvas{width:100%;height:220px;display:block}
+.analytics-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.analytics-controls label{font-size:13px;color:var(--mute)}
+.analytics-table{width:100%;border-collapse:collapse;font-size:13px}
+.analytics-table th,.analytics-table td{padding:9px 7px;border-bottom:1px solid var(--line);text-align:right}
+.analytics-table th:first-child,.analytics-table td:first-child{text-align:left}
+.analytics-table th{color:var(--mute);font-weight:600}
+.table-scroll{overflow-x:auto}
+.metric-note{font-size:12px;color:var(--mute);margin-top:8px}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<section id="auth" class="card auth" hidden>
+  <h1 class="appName"></h1>
+  <p class="msg" id="authSub"></p>
+  <form id="authForm">
+    <label class="field" for="email">Email</label>
+    <input id="email" type="email" autocomplete="email">
+    <label class="field" for="pw">Password (8 or more characters)</label>
+    <input id="pw" type="password" maxlength="72" autocomplete="current-password">
+    <div id="signupOnly" hidden>
+      <label class="field" for="tid">Your Quotex ID (the number on your Quotex account page)</label>
+      <input id="tid" inputmode="numeric" maxlength="15">
+      <label class="row" style="margin-top:14px"><input id="consent" type="checkbox">
+        <span class="msg" style="margin:0">I agree that the trade history I upload is stored to show me my statistics.</span></label>
+    </div>
+    <p class="msg err" id="authErr"></p>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="authBtn">Log in</button>
+      <button type="button" id="toggle">Create an account</button>
+    </div>
+  </form>
+</section>
+
+<section id="app" hidden>
+  <header>
+    <h1 class="appName"></h1>
+    <div class="row"><span class="msg" id="who" style="margin:0"></span><button id="logout">Log out</button></div>
+  </header>
+
+  <section id="gate" class="card" hidden>
+    <h2>Access is for traders who joined Quotex through our link</h2>
+    <p>We could not find your Quotex ID under our affiliate link yet. New sign-ups can take a little while to appear.
+       If you registered through our link and still see this, please contact us.</p>
+    <button id="recheck">Check again</button>
+  </section>
+
+  <section id="main" hidden>
+    <div class="card">
+      <div class="row">
+        <label>Account <select id="acct"><option value="live">Live</option><option value="demo">Demo</option></select></label>
+        <label>Currency <input id="cur" value="INR" maxlength="3" size="4"></label>
+      </div>
+      <form id="upload" class="row" style="margin-top:12px">
+        <input id="file" type="file" accept=".csv">
+        <button class="primary">Upload Quotex CSV</button>
+      </form>
+      <p class="msg" id="upMsg">In Quotex: Trades, then Trade History, then Export to, then CSV. The file is added to the account type and currency chosen above.</p>
+    </div>
+
+    <div class="card" id="statsCard"><div class="stats" id="stats"></div><p class="msg" id="noData" hidden>No trades yet. Upload your Quotex CSV above.</p></div>
+
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Performance explorer</h2>
+        <div class="analytics-controls">
+          <label>Group by
+            <select id="periodMode">
+              <option value="day">Day</option>
+              <option value="month" selected>Month</option>
+              <option value="year">Year</option>
+            </select>
+          </label>
+          <label>Year <select id="periodYear"></select></label>
+        </div>
+      </div>
+      <div class="stats" id="periodStats" style="margin-top:14px"></div>
+      <div class="analytics-grid" style="margin-top:14px">
+        <div class="analytics-panel">
+          <h3>Profit / loss by selected period</h3>
+          <canvas id="periodPnlChart" height="220"></canvas>
+        </div>
+        <div class="analytics-panel">
+          <h3>Trade outcomes</h3>
+          <canvas id="outcomeChart" height="220"></canvas>
+          <p class="metric-note" id="outcomeNote"></p>
+        </div>
+      </div>
+      <div class="table-scroll" style="margin-top:14px">
+        <table class="analytics-table">
+          <thead><tr><th>Period</th><th>Net P&amp;L</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Accuracy</th></tr></thead>
+          <tbody id="periodTable"></tbody>
+        </table>
+      </div>
+      <p class="metric-note">Daily/monthly/yearly views are calculated from the daily statistics returned by your backend. Periods without trades are not included.</p>
+    </div>
+
+    <div class="card">
+      <h2>Trading frequency — best and quietest periods</h2>
+      <div class="stats" id="frequencyStats"></div>
+      <p class="metric-note" id="frequencyNote"></p>
+    </div>
+
+    <div class="card">
+      <h2>Pair-wise performance</h2>
+      <p class="msg" id="pairStatus">Loading pair-wise statistics…</p>
+      <div class="table-scroll">
+        <table class="analytics-table">
+          <thead><tr><th>Pair</th><th>Net P&amp;L</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Accuracy</th></tr></thead>
+          <tbody id="pairTable"></tbody>
+        </table>
+      </div>
+      <div class="analytics-grid" style="margin-top:14px">
+        <div class="analytics-panel">
+          <h3>P&amp;L by pair</h3>
+          <canvas id="pairChart" height="220"></canvas>
+        </div>
+        <div class="analytics-panel">
+          <h3>Trade distribution by pair</h3>
+          <canvas id="pairDistributionChart" height="220"></canvas>
+        </div>
+      </div>
+      <div style="margin-top:18px">
+        <h3 style="font-size:13px;color:var(--mute);margin:0 0 8px">OTC vs regular-market breakdown</h3>
+        <div class="table-scroll">
+          <table class="analytics-table">
+            <thead><tr><th>Pair</th><th>Market</th><th>Net P&amp;L</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Accuracy</th><th>Avg. P&amp;L</th></tr></thead>
+            <tbody id="marketPairTable"></tbody>
+          </table>
+        </div>
+        <p class="metric-note">Combined pair totals above include both markets. This breakdown separates trades using the OTC flag from the original Quotex CSV.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Daily P&amp;L heatmap</h2>
+        <div class="row"><button id="prev" aria-label="Previous month">&lsaquo;</button><b id="monthLabel" style="min-width:130px;text-align:center"></b><button id="next" aria-label="Next month">&rsaquo;</button></div>
+      </div>
+      <p class="msg" id="monthPnl"></p>
+      <div class="cal" id="calHead" style="margin-top:10px"></div>
+      <div class="cal" id="cal" style="margin-top:6px"></div>
+      <p class="msg" id="dayInfo">Tap a coloured day for details.</p>
+    </div>
+
+    <div class="card curve-card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">P&amp;L graph</h2>
+        <label class="analytics-controls">View
+          <select id="curveMode">
+            <option value="daily" selected>Daily P&amp;L</option>
+            <option value="cumulative">Cumulative P&amp;L</option>
+          </select>
+        </label>
+      </div>
+      <svg id="curve" viewBox="0 0 820 300" role="img" aria-label="Daily profit and loss graph"></svg>
+      <p class="msg" id="curveNote"></p>
+    </div>
+  </section>
+</section>
+
+<footer>This journal only tracks the trade history you upload. It is not financial advice, and binary options trading carries a high risk of losing money.</footer>
+</div>
+
+<script>
+const APP_NAME = "Trading Journal";           // rename to your own brand
+const $ = id => document.getElementById(id);
+const MESSAGES = {
+  invalid_credentials: "Wrong email or password.",
+  consent_required: "Please tick the consent box.",
+  email_or_trader_id_already_registered: "That email or Quotex ID is already registered.",
+  not_referred: "Your Quotex ID is not under our affiliate link.",
+  file_too_large: "That file is too large.",
+  another_upload_in_progress: "An upload is already running. Try again in a moment."
+};
+let token = localStorage.getItem("token");
+let days = [], month = null, signup = false;
+
+document.title = APP_NAME;
+document.querySelectorAll(".appName").forEach(e => e.textContent = APP_NAME);
+
+function errText(body) {
+  const d = body && body.detail;
+  if (typeof d === "string") return MESSAGES[d] || d;
+  if (Array.isArray(d) && d[0]) return "Please check the " + String(d[0].loc.slice(-1)[0]).replace(/_/g, " ") + " field.";
+  return "Something went wrong.";
+}
+
+async function api(path, opts = {}) {
+  const headers = token ? { Authorization: "Bearer " + token } : {};
+  const r = await fetch(path, { ...opts, headers });
+  let body = null;
+  try { body = await r.json(); } catch (e) {}
+  if (r.status === 401 && token && !path.startsWith("/api/login")) logout();
+  if (!r.ok) throw Object.assign(new Error(errText(body)), { status: r.status });
+  return body;
+}
+const post = (path, data) => api(path, { method: "POST", headers: {}, body: data });
+async function postJson(path, obj) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) });
+  let body = null;
+  try { body = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(errText(body));
+  return body;
+}
+
+function money(v) {
+  const cur = ($("cur").value || "INR").trim().toUpperCase();
+  try { return new Intl.NumberFormat("en-IN", { style: "currency", currency: cur, maximumFractionDigits: 0, signDisplay: "exceptZero" }).format(v); }
+  catch (e) { return String(Math.round(v)); }
+}
+
+/* ---------- login / signup ---------- */
+function setMode(isSignup) {
+  signup = isSignup;
+  $("signupOnly").hidden = !signup;
+  $("authBtn").textContent = signup ? "Sign up" : "Log in";
+  $("toggle").textContent = signup ? "I already have an account" : "Create an account";
+  $("authSub").textContent = signup ? "Sign up with the Quotex ID you registered with." : "Log in to see your trading stats.";
+  $("pw").autocomplete = signup ? "new-password" : "current-password";
+  $("authErr").textContent = "";
+}
+$("toggle").onclick = () => setMode(!signup);
+
+$("authForm").onsubmit = async e => {
+  e.preventDefault();
+  $("authErr").textContent = "";
+  const email = $("email").value.trim(), password = $("pw").value;
+  try {
+    let res;
+    if (signup) {
+      const tid = $("tid").value.trim();
+      if (!/^\d{4,15}$/.test(tid)) throw new Error("Your Quotex ID should be a number (4 to 15 digits).");
+      if (password.length < 8) throw new Error("Use a password of at least 8 characters.");
+      res = await postJson("/api/signup", { email, password, quotex_trader_id: tid, consent: $("consent").checked });
+    } else {
+      res = await postJson("/api/login", { email, password });
+    }
+    token = res.token;
+    localStorage.setItem("token", token);
+    $("pw").value = "";
+    await start();
+  } catch (err) { $("authErr").textContent = err.message; }
+};
+
+function logout() {
+  token = null; localStorage.removeItem("token"); days = [];
+  $("app").hidden = true; $("auth").hidden = false; setMode(false);
+}
+$("logout").onclick = logout;
+
+/* ---------- loading data ---------- */
+async function start() {
+  const me = await api("/api/me");
+  $("auth").hidden = true; $("app").hidden = false;
+  $("who").textContent = me.email + " · Quotex ID " + me.quotex_trader_id;
+  $("gate").hidden = me.verified; $("main").hidden = !me.verified;
+  if (me.verified) await refresh();
+}
+$("recheck").onclick = () => start().catch(() => {});
+
+async function refresh() {
+  const q = "account_type=" + $("acct").value + "&currency=" + encodeURIComponent($("cur").value.trim());
+  const [d, s] = await Promise.all([api("/api/stats/daily?" + q), api("/api/stats/summary?" + q)]);
+  days = d;
+  month = days.length ? days[days.length - 1].day.slice(0, 7) : null;
+  renderStats(s); renderCal(); renderCurve(); renderAdvanced(); renderPairs();
+}
+$("acct").onchange = $("cur").onchange = () => refresh().catch(e => $("upMsg").textContent = e.message);
+
+$("upload").onsubmit = async e => {
+  e.preventDefault();
+  const f = $("file").files[0], msg = $("upMsg");
+  msg.className = "msg";
+  if (!f) { msg.textContent = "Choose your exported CSV file first."; return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("account_type", $("acct").value);
+  fd.append("currency", $("cur").value.trim());
+  try {
+    const r = await post("/api/uploads", fd);
+    msg.textContent = r.new + " new trades added, " + r.already_had + " already in your journal." + (r.warnings.length ? " " + r.warnings.join(" ") : "");
+    $("file").value = "";
+    await refresh();
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+};
+
+/* ---------- rendering ---------- */
+function card(label, value, cls) {
+  const d = document.createElement("div"); d.className = "stat";
+  const b = document.createElement("b"); b.textContent = value; if (cls) b.className = cls;
+  const s = document.createElement("span"); s.textContent = label;
+  d.append(b, s); return d;
+}
+function renderStats(s) {
+  const box = $("stats"); box.replaceChildren();
+  $("noData").hidden = s.trades > 0;
+  if (!s.trades) return;
+  const pct = v => v == null ? "–" : v + "%";
+  box.append(
+    card("Net P&L", money(s.net_pnl), s.net_pnl > 0 ? "pos" : s.net_pnl < 0 ? "neg" : ""),
+    card("Accuracy (" + s.wins + " W / " + s.losses + " L" + (s.draws ? " / " + s.draws + " D" : "") + ")", pct(s.accuracy_pct)),
+    card("Accuracy per distinct entry (" + s.distinct_entries + ")", pct(s.entry_accuracy_pct)),
+    card("Trades", String(s.trades))
+  );
+}
+
+
+function periodKey(day, mode) {
+  if (mode === "year") return day.slice(0, 4);
+  if (mode === "month") return day.slice(0, 7);
+  return day;
+}
+function aggregateRows(rows, mode) {
+  const map = new Map();
+  for (const d of rows) {
+    const key = periodKey(d.day, mode);
+    if (!map.has(key)) map.set(key, {period:key,pnl:0,trades:0,wins:0,losses:0,draws:0});
+    const a = map.get(key);
+    a.pnl += Number(d.pnl || 0);
+    a.trades += Number(d.trades || 0);
+    a.wins += Number(d.wins || 0);
+    a.losses += Number(d.losses || 0);
+    a.draws += Number(d.draws || 0);
+  }
+  return [...map.values()].sort((a,b) => a.period.localeCompare(b.period)).map(a => ({
+    ...a, accuracy_pct: (a.wins + a.losses) ? +(100*a.wins/(a.wins+a.losses)).toFixed(2) : null
+  }));
+}
+function fillYearFilter() {
+  const sel = $("periodYear");
+  const years = [...new Set(days.map(d => d.day.slice(0,4)))].sort();
+  const old = sel.value;
+  sel.replaceChildren();
+  years.forEach(y => { const o=document.createElement("option"); o.value=y; o.textContent=y; sel.append(o); });
+  if (years.includes(old)) sel.value=old;
+  else if (years.length) sel.value=years[years.length-1];
+}
+function drawBarChart(canvasId, labels, values) {
+  const c=$(canvasId), ctx=c.getContext("2d"), w=c.width=c.clientWidth*devicePixelRatio, h=c.height=220*devicePixelRatio;
+  ctx.clearRect(0,0,w,h);
+  if (!values.length) { ctx.fillStyle="#8b95a8";ctx.font="13px sans-serif";ctx.fillText("No data available",12,28);return; }
+  const max=Math.max(1,...values.map(v=>Math.abs(v))), zero=h/2, slot=w/values.length, bw=Math.max(4,slot*.58);
+  ctx.strokeStyle="#465064";ctx.beginPath();ctx.moveTo(0,zero);ctx.lineTo(w,zero);ctx.stroke();
+  values.forEach((v,i)=>{
+    const bh=Math.abs(v)/max*(h*.38), x=i*slot+(slot-bw)/2, y=v>=0?zero-bh:zero;
+    ctx.fillStyle=v>=0?"#1fb57a":"#e5484d";ctx.fillRect(x,y,bw,bh);
+    if (labels.length<=12) {ctx.fillStyle="#aab3c3";ctx.font="10px sans-serif";ctx.textAlign="center";ctx.fillText(labels[i],x+bw/2,h-5);}
+  });
+}
+function drawDonut(canvasId, values, labels) {
+  const c=$(canvasId),ctx=c.getContext("2d"),w=c.width=c.clientWidth*devicePixelRatio,h=c.height=220*devicePixelRatio;
+  ctx.clearRect(0,0,w,h);
+  const total=values.reduce((a,b)=>a+b,0);
+  if (!total) {ctx.fillStyle="#8b95a8";ctx.font="13px sans-serif";ctx.fillText("No outcome data",12,28);return;}
+  const cx=w*.36,cy=h*.48,r=Math.min(w*.25,h*.36),colors=["#1fb57a","#e5484d","#8b95a8"];
+  let angle=-Math.PI/2;
+  values.forEach((v,i)=>{if(!v)return;const end=angle+v/total*Math.PI*2;ctx.beginPath();ctx.arc(cx,cy,r,angle,end);ctx.arc(cx,cy,r*.58,end,angle,true);ctx.closePath();ctx.fillStyle=colors[i];ctx.fill();angle=end;});
+  ctx.font="12px sans-serif";ctx.textAlign="left";
+  labels.forEach((label,i)=>{ctx.fillStyle=colors[i];ctx.fillRect(w*.68, h*.28+i*28,10,10);ctx.fillStyle="#c5ccda";ctx.fillText(label+": "+values[i],w*.68+16,h*.28+10+i*28);});
+}
+function renderAdvanced() {
+  fillYearFilter();
+  const mode=$("periodMode").value, year=$("periodYear").value;
+  const chosen=days.filter(d=>!year || d.day.startsWith(year));
+  const rows=aggregateRows(chosen,mode);
+  const totalTrades=chosen.reduce((a,d)=>a+Number(d.trades||0),0);
+  const totalPnl=chosen.reduce((a,d)=>a+Number(d.pnl||0),0);
+  const wins=chosen.reduce((a,d)=>a+Number(d.wins||0),0);
+  const losses=chosen.reduce((a,d)=>a+Number(d.losses||0),0);
+  const busiest=[...chosen].sort((a,b)=>b.trades-a.trades)[0];
+  const quietest=[...chosen].filter(d=>d.trades>0).sort((a,b)=>a.trades-b.trades)[0];
+  $("periodStats").replaceChildren(
+    card("Net P&L",money(totalPnl),totalPnl>0?"pos":totalPnl<0?"neg":""),
+    card("Total trades",String(totalTrades)),
+    card("Winning trades",String(wins),"pos"),
+    card("Losing trades",String(losses),"neg"),
+    card("Accuracy",wins+losses?((wins/(wins+losses))*100).toFixed(2)+"%":"–")
+  );
+  $("frequencyStats").replaceChildren(
+    card("Most trades in a day",busiest?busiest.trades+" trades":"–"),
+    card("Busiest day",busiest?busiest.day:"–"),
+    card("Fewest trades in an active day",quietest?quietest.trades+" trades":"–"),
+    card("Quietest active day",quietest?quietest.day:"–")
+  );
+  const monthRows=aggregateRows(chosen,"month");
+  const maxMonth=[...monthRows].sort((a,b)=>b.trades-a.trades)[0];
+  const minMonth=[...monthRows].filter(r=>r.trades>0).sort((a,b)=>a.trades-b.trades)[0];
+  $("frequencyNote").textContent = maxMonth
+    ? "Within "+(year||"all years")+", busiest month: "+maxMonth.period+" ("+maxMonth.trades+" trades); quietest active month: "+(minMonth?minMonth.period+" ("+minMonth.trades+" trades)":"–")+"."
+    : "Upload trades to calculate daily and monthly trading frequency.";
+  $("periodTable").replaceChildren();
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    [r.period,money(r.pnl),r.trades,r.wins,r.losses,r.accuracy_pct==null?"–":r.accuracy_pct+"%"].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.append(td);});
+    $("periodTable").append(tr);
+  });
+  drawBarChart("periodPnlChart",rows.map(r=>r.period),rows.map(r=>r.pnl));
+  drawDonut("outcomeChart",[wins,losses,Math.max(0,totalTrades-wins-losses)],["Wins","Losses","Other/draws"]);
+  $("outcomeNote").textContent=totalTrades+" trades in "+(year||"all years")+".";
+}
+async function renderPairs() {
+  const body=$("pairTable"), marketBody=$("marketPairTable");
+  body.replaceChildren();
+  marketBody.replaceChildren();
+  $("pairStatus").textContent="Requesting pair-wise statistics…";
+  try {
+    const q="account_type="+encodeURIComponent($("acct").value)+"&currency="+encodeURIComponent($("cur").value.trim());
+    const result=await api("/api/stats/pairs?"+q);
+    const pairs=Array.isArray(result)?result:(result.pairs||[]);
+    const marketRows=Array.isArray(result)?[]:(result.market_breakdown||[]);
+    if(!pairs.length){
+      $("pairStatus").textContent="No pair-wise records returned. Check that your imported trade data contains an asset/symbol field.";
+      drawBarChart("pairChart",[],[]);
+      drawDonut("pairDistributionChart",[],[]);
+      return;
+    }
+    pairs.sort((a,b)=>Number(b.pnl??b.net_pnl??0)-Number(a.pnl??a.net_pnl??0));
+    pairs.forEach(p=>{
+      const pnl=Number(p.pnl??p.net_pnl??0),trades=Number(p.trades||0),wins=Number(p.wins||0),losses=Number(p.losses||0);
+      const accuracy=p.accuracy_pct??(wins+losses?100*wins/(wins+losses):null);
+      const tr=document.createElement("tr");
+      [p.pair||p.symbol||p.asset||"Unknown",money(pnl),trades,wins,losses,accuracy==null?"–":Number(accuracy).toFixed(2)+"%"].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.append(td);});
+      body.append(tr);
+    });
+    marketRows.forEach(p=>{
+      const tr=document.createElement("tr");
+      const accuracy=p.accuracy_pct==null?"–":Number(p.accuracy_pct).toFixed(2)+"%";
+      [p.pair,p.market,money(Number(p.pnl||0)),Number(p.trades||0),Number(p.wins||0),Number(p.losses||0),accuracy,money(Number(p.avg_pnl||0))]
+        .forEach((v,i)=>{const td=document.createElement("td");td.textContent=v;if(i===1)td.className=p.market==="OTC"?"neg":"pos";tr.append(td);});
+      marketBody.append(tr);
+    });
+    $("pairStatus").textContent=pairs.length+" pairs found · "+marketRows.length+" pair/market breakdown rows.";
+    drawBarChart("pairChart",pairs.map(p=>p.pair||p.symbol||p.asset||"Pair"),pairs.map(p=>Number(p.pnl??p.net_pnl??0)));
+    drawDonut("pairDistributionChart",pairs.map(p=>Number(p.trades||0)),pairs.map(p=>p.pair||p.symbol||p.asset||"Pair"));
+  } catch(err) {
+    $("pairStatus").textContent="Could not load pair-wise analysis: "+err.message;
+  }
+}
+$("periodMode").onchange=renderAdvanced;
+$("curveMode").onchange=renderCurve;
+$("periodYear").onchange=renderAdvanced;
+
+function renderCal() {
+  const head = $("calHead"), grid = $("cal");
+  head.replaceChildren(); grid.replaceChildren();
+  "SMTWTFS".split("").forEach(c => { const d = document.createElement("div"); d.className = "dow"; d.textContent = c; head.append(d); });
+  $("dayInfo").textContent = "Tap a coloured day for details.";
+  if (!month) { $("monthLabel").textContent = "–"; $("monthPnl").textContent = ""; return; }
+  const [y, m] = month.split("-").map(Number);
+  $("monthLabel").textContent = new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const byDay = Object.fromEntries(days.map(d => [d.day, d]));
+  const inMonth = days.filter(d => d.day.startsWith(month));
+  const total = inMonth.reduce((a, d) => a + d.pnl, 0);
+  $("monthPnl").textContent = "Month total: " + (inMonth.length ? money(total) : "no trades");
+  const max = Math.max(1, ...inMonth.map(d => Math.abs(d.pnl)));
+  for (let i = new Date(y, m - 1, 1).getDay(); i > 0; i--) grid.append(document.createElement("div"));
+  for (let day = 1, n = new Date(y, m, 0).getDate(); day <= n; day++) {
+    const d = byDay[month + "-" + String(day).padStart(2, "0")];
+    const c = document.createElement(d ? "button" : "div");
+    c.className = "cell"; c.textContent = day;
+    if (d) {
+      c.type = "button";
+      if (d.pnl === 0) c.classList.add("flat");
+      else c.style.background = "rgba(" + (d.pnl > 0 ? "31,181,122" : "229,72,77") + "," + (0.25 + 0.75 * Math.abs(d.pnl) / max) + ")";
+      c.onclick = () => {
+        $("dayInfo").textContent = d.day + ": " + money(d.pnl) + " · " + d.trades + " trades · " + d.wins + " W / " + d.losses + " L · accuracy " + (d.accuracy_pct == null ? "–" : d.accuracy_pct + "%");
+      };
+    }
+    grid.append(c);
+  }
+}
+function shiftMonth(by) {
+  if (!month) return;
+  const [y, m] = month.split("-").map(Number), t = new Date(y, m - 1 + by, 1);
+  month = t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0");
+  renderCal();
+}
+$("prev").onclick = () => shiftMonth(-1);
+$("next").onclick = () => shiftMonth(1);
+
+function renderCurve() {
+  const svg = $("curve"), NS = "http://www.w3.org/2000/svg";
+  svg.replaceChildren();
+  svg.setAttribute("viewBox", "0 0 820 300");
+  svg.setAttribute("preserveAspectRatio", "none");
+
+  const mode = $("curveMode")?.value || "daily";
+  $("curveNote").textContent = days.length ? "" : "Appears after you upload trades.";
+  svg.setAttribute("aria-label", mode === "daily" ? "Daily profit and loss graph" : "Cumulative profit and loss graph");
+  if (!days.length) return;
+
+  let running = 0;
+  const pts = days.map(d => {
+    const daily = Number(d.pnl || 0);
+    running += daily;
+    return { day: d.day, daily, cumulative: running, value: mode === "daily" ? daily : running };
+  });
+  const netTotal = running;
+  const finalValue = mode === "daily" ? netTotal : running;
+  const W = 820, H = 300, L = 64, R = 20, T = 24, B = 44;
+  const plotW = W - L - R, plotH = H - T - B;
+  const values = pts.map(p => p.value);
+  let lo = Math.min(0, ...values), hi = Math.max(0, ...values);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.14;
+  lo -= pad; hi += pad;
+  const x = i => pts.length === 1 ? L + plotW / 2 : L + i * plotW / (pts.length - 1);
+  const y = v => T + (hi - v) / (hi - lo) * plotH;
+  const color = netTotal >= 0 ? "#1fb57a" : "#e5484d";
+  const fmt = v => {
+    try { return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(v); }
+    catch(e) { return String(Math.round(v)); }
+  };
+  const el = (tag, attrs={}, parent=svg) => {
+    const n = document.createElementNS(NS, tag);
+    Object.entries(attrs).forEach(([k,v]) => n.setAttribute(k, v));
+    parent.appendChild(n);
+    return n;
+  };
+
+  const defs = el("defs");
+  const grad = el("linearGradient", {id:"equityFill",x1:"0",y1:"0",x2:"0",y2:"1"}, defs);
+  el("stop",{offset:"0%","stop-color":color,"stop-opacity":".42"},grad);
+  el("stop",{offset:"100%","stop-color":color,"stop-opacity":".015"},grad);
+  const glow = el("filter",{id:"equityGlow",x:"-30%",y:"-30%",width:"160%",height:"160%"},defs);
+  el("feGaussianBlur",{stdDeviation:"2.2",result:"blur"},glow);
+  const merge=el("feMerge",{},glow);
+  el("feMergeNode",{in:"blur"},merge);
+  el("feMergeNode",{in:"SourceGraphic"},merge);
+
+  for(let i=0;i<=5;i++){
+    const v=hi-(hi-lo)*i/5, yy=y(v);
+    el("line",{x1:L,y1:yy,x2:W-R,y2:yy,class:"curve-grid"});
+    const label=el("text",{x:L-10,y:yy+4,"text-anchor":"end",class:"curve-axis"});
+    label.textContent=fmt(v);
+  }
+  const zeroY=y(0);
+  el("line",{x1:L,y1:zeroY,x2:W-R,y2:zeroY,class:"curve-zero"});
+
+  const labelCount=Math.min(7,pts.length), used=new Set();
+  for(let i=0;i<labelCount;i++){
+    const idx=labelCount===1?0:Math.round(i*(pts.length-1)/(labelCount-1));
+    if(used.has(idx)) continue;
+    used.add(idx);
+    const d=new Date(pts[idx].day+"T00:00:00");
+    const label=el("text",{x:x(idx),y:H-13,"text-anchor":"middle",class:"curve-axis"});
+    label.textContent=isNaN(d) ? pts[idx].day : d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+  }
+
+  const coords=pts.map((p,i)=>[x(i),y(p.value)]);
+  let lineD="";
+  if(coords.length===1) lineD=`M ${coords[0][0]} ${coords[0][1]} l 0 0`;
+  else {
+    lineD=`M ${coords[0][0]} ${coords[0][1]}`;
+    for(let i=0;i<coords.length-1;i++){
+      const p0=coords[Math.max(0,i-1)], p1=coords[i], p2=coords[i+1], p3=coords[Math.min(coords.length-1,i+2)];
+      const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+      const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+      lineD+=` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2[0]} ${p2[1]}`;
+    }
+  }
+  const baseY=Math.max(T,Math.min(H-B,zeroY));
+  const areaD=lineD+` L ${coords[coords.length-1][0]} ${baseY} L ${coords[0][0]} ${baseY} Z`;
+  el("path",{d:areaD,fill:"url(#equityFill)"});
+  el("path",{d:lineD,fill:"none",stroke:color,"stroke-width":"3.2","stroke-linecap":"round","stroke-linejoin":"round",filter:"url(#equityGlow)"});
+
+  coords.forEach((pt,i)=>{
+    const pointColor = pts[i].daily >= 0 ? "#1fb57a" : "#e5484d";
+    const circle=el("circle",{cx:pt[0],cy:pt[1],r:pts.length>35?3:4.5,fill:pointColor,class:"curve-point"});
+    const title=el("title",{},circle);
+    title.textContent=`${pts[i].day}\nDaily P&L: ${money(pts[i].daily)}\nCumulative P&L: ${money(pts[i].cumulative)}`;
+    if(mode==="daily" && pts.length<=18){
+      const labelY = pts[i].value >= 0 ? Math.max(T+10,pt[1]-10) : Math.min(H-B-4,pt[1]+17);
+      const label=el("text",{x:pt[0],y:labelY,"text-anchor":"middle",class:"curve-axis"});
+      label.textContent=fmt(pts[i].daily);
+    }
+  });
+
+  const rangeText = pts[0].day + " to " + pts[pts.length-1].day;
+  $("curveNote").textContent = mode === "daily"
+    ? rangeText + " · daily P&L shown for each trading day · total net P&L " + money(netTotal) + " · hover over points for details"
+    : rangeText + " · cumulative curve ends at " + money(finalValue) + " · hover over points for daily and cumulative details";
+}
+
+/* ---------- start ---------- */
+setMode(false);
+if (token) start().catch(() => { if (!token) return; $("auth").hidden = false; });
+else $("auth").hidden = false;
+</script>
+</body>
+</html>
